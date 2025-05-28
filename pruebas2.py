@@ -26,14 +26,14 @@ for ruta in listas_rutas_anteriores:
     # ciclo for para ir agregando las rutas y los nombres a sus listas respectivas
     print("Ruta1: ",ruta)
     listaRutas.append(os.path.join(ruta))
-    for i in range(0,len(listas_rutas_anteriores)):
-        # agrega la ruta a la lista desde C:, hasta la ruta actual
-        listaRutas.append(os.path.join(ruta_anterior, str(listas_rutas_anteriores[i])))
+# ciclo que agrega los contenidos de cada ruta a lista de archivos con su respectiva ruta
+for i, rutas in enumerate(listaRutas):
+        print(rutas)
+        archivos = os.listdir(rutas) 
         # agrega los nombres de los archivos dentro de la ruta actual
-        nombreArchivos.append(listas_rutas_anteriores[i])
-        print("Agregando: ",listas_rutas_anteriores[i])
-for rutas in listaRutas:
-    print(rutas)
+        nombreArchivos.append([rutas,archivos])
+for nombres in nombreArchivos:
+    print("Nombres: ",nombres, "\n")
 
 
 
