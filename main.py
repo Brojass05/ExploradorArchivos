@@ -30,11 +30,15 @@ class ExploradorArchivos(ttk.Frame):
         label_file_explorer.grid(column=1, row=1)
         button_explore.grid(column=1, row=2)
         button_exit.grid(column=1, row=3)
-        self.lista.bind("<Key>", self.on_archivo_seleccionado)
+        
+        self.lista.bind("<Double-Button-1>", lambda event: self.on_archivo_seleccionado(event))
+
 
         self.window.mainloop()
         
+    # Arreglar la seleccion    
     def abrir_archivo(self, rutaArchivo: str):
+        print("Abriendo")
         # recibe una ruta y dependiendo del tipo de sistema en el que se ejecuta hara una u otra ejecucion
         if self.sistema == "Windows":
             os.startfile(rutaArchivo)
@@ -46,75 +50,49 @@ class ExploradorArchivos(ttk.Frame):
             raise Exception(f"Sistema operativo no soportado: {self.sistema}")
         self.ruta_anterior: str = rutaArchivo.split(rutaArchivo.split('\\')[-1])[0].rstrip('\\')
         print(self.ruta_anterior)
+    
+    def on_archivo_seleccionado(self, event):
+        seleccion = self.lista.curselection()
+        print("Seleccion: ",seleccion)
+        if seleccion:
+            archivo = self.lista.get(seleccion[0])
+
+            # Usa la ruta asociada al listbox, no os.getcwd()
+            ruta_base = getattr(self.lista, 'ruta_base', os.getcwd())
+            ruta_archivo = os.path.join(ruta_base, archivo)
+
+            print(f"Archivo seleccionado: {ruta_archivo}")
+            self.abrir_archivo(ruta_archivo)
+
         
     def browseFiles(self):
-        try:
-            # obtiene la ruta actual del directorio
-            ruta_actual = os.getcwd()
-            # obtiene los archivos que estan en la ruta actual
-            archivos_en_ruta = os.listdir(ruta_actual)
-        except Exception as e:
-            print(f"Error al acceder a la ruta: {e}")
-            return
-        #  divide la ruta actual en partes para crear pestanas
-        self.partes_ruta = [x for x in ruta_actual.split('\\') if x != '']
-        # obtiene la ruta anterior sacando el ultimo nombre y eliminando el ultimo \
-        self.ruta_anterior: str = ruta_actual.split(self.partes_ruta[-1])[0].rstrip('\\')
-        # crea listas para las rutas y los nombres de los archivos
-        lista_rutas_archivos: list = []
-        nombreArchivos: list = []
-        listas_rutas_anteriores: list = []
-        
-        for n in range(1, len(self.partes_ruta)):
-            ruta = ruta_actual.split(self.partes_ruta[-n])[0].rstrip('\\')
-            listas_rutas_anteriores.append(ruta)
-        
-        
-        # ciclo for para ir agregando las rutas y los nombres a sus listas respectivas
-        for i in range(0,len(archivos_en_ruta)):
-            # agrega la ruta a la lista desde C:, hasta la ruta actual
-            lista_rutas_archivos.append(os.path.join(self.ruta_anterior, str(archivos_en_ruta[i])))
-            # agrega los nombres de los archivos dentro de la ruta actual
-            nombreArchivos.append(archivos_en_ruta[i])
-        
-        
+        lista_rutas = self.obtener_rutas() 
+        carpetas: list = str(lista_rutas[0]).split("\\")
         # crea la ventana emergente para la vista del notebook
         ventana_carpetas = Toplevel(self.window)
         ventana_carpetas.title("Archivos")
         notebook = ttk.Notebook(ventana_carpetas)
+        lista_rutas.reverse()
 
         # Recorremos cada carpeta de la ruta actual desglosada
-        for i, carpeta in enumerate(self.partes_ruta): 
+        for i, carpeta in enumerate(carpetas):
             # Creamos un nuevo frame (pestaña) para agregar al notebook
             frame = Frame(notebook)
-
+            
             # Agregamos un label que muestra qué carpeta representa esta pestaña
             label = Label(frame, text=f"Contenido de carpeta: {carpeta}")
             label.pack(padx=10, pady=10)
 
             # Creamos un Listbox para mostrar los archivos
             self.lista = Listbox(frame, width=50)
-            nuevos_archivos_en_ruta: list = os.listdir(lista_rutas_archivos[i])
             # Insertamos cada archivo dentro del Listbox
-            for archivo in nuevos_archivos_en_ruta:
-                self.lista.insert(END, archivo)
-
+            ruta = lista_rutas[i]
+            archivos_en_ruta = self.obtener_archivos(ruta)
+            for archivos in archivos_en_ruta:
+                for archivo in archivos:
+                    self.lista.insert(END, archivo)
             # Empaquetamos el Listbox en el frame
             self.lista.pack(padx=10, pady=10)
-
-
-            # Solo agregamos los archivos visibles en la última pestaña,
-            # que representa la carpeta final (la ruta actual completa)
-            '''if i == len(self.partes_ruta) - 1:
-                # Creamos un Listbox para mostrar los archivos
-                self.lista = Listbox(frame, width=50)
-                
-                # Insertamos cada archivo dentro del Listbox
-                for archivo in archivos_en_ruta:
-                    self.lista.insert(END, archivo)
-
-                # Empaquetamos el Listbox en el frame
-                self.lista.pack(padx=10, pady=10)'''
 
             # Agregamos el frame al notebook como una nueva pestaña con el nombre de la carpeta
             notebook.add(frame, text=carpeta)
@@ -122,13 +100,56 @@ class ExploradorArchivos(ttk.Frame):
         # Finalmente, empacamos el notebook para que se muestre en la ventana
         notebook.pack(fill='both', expand=True)
 
-    def on_archivo_seleccionado(self,event):
-        seleccion = self.lista.curselection()
-        if seleccion:
-            archivo = self.lista.get(seleccion[0])
-            ruta_archivo = os.path.join(os.getcwd(), archivo)
-            print(f"Archivo seleccionado: {ruta_archivo}")
-            self.abrir_archivo(ruta_archivo)
+
+            
+    def obtener_archivos(self,ruta_actual):
+        # Listas que guardarán las rutas completas y los nombres de archivos por ruta
+        listaRutas: list = self.obtener_rutas() 
+        nombreArchivos: list = []
+        # Ciclo que recorre cada ruta guardada y obtiene sus archivos
+        try:
+            archivos = os.listdir(ruta_actual)  # Intenta listar los archivos en esa ruta
+        except Exception as e:
+            print(f"No se pudo acceder a {ruta_actual}: {e}")
+            archivos = []  # Si hay error (por permisos o inexistencia), agrega lista vacía
+        # Guarda los resultados como una tupla (ruta, lista de archivos)
+        nombreArchivos.append(archivos)
+        return nombreArchivos
+    
+    def obtener_rutas(self):
+        try:
+            # Obtiene la ruta actual del directorio desde donde se ejecuta el script
+            ruta_actual = os.getcwd()
+        except Exception as e:
+            print(f"Error al acceder a la ruta: {e}")
+            return []
+        # Divide la ruta actual en partes usando el separador del sistema operativo
+        # Esto sirve para ir construyendo rutas anteriores paso a paso
+        
+        partes_ruta = [x for x in ruta_actual.split(os.sep) if x != '']
+        partes_ruta.append(ruta_actual)
+
+        # Crea una lista para almacenar las rutas anteriores desde el root hasta el directorio actual
+        listas_rutas_anteriores: list = []
+        for n in range(1, len(partes_ruta)):
+            ruta_partes = partes_ruta[:len(partes_ruta) - n]
+            
+            # Si solo queda "C:", lo convertimos a "C:\\"
+            if len(ruta_partes) == 1 and ':' in ruta_partes[0]:
+                ruta = ruta_partes[0] + os.sep
+            else:
+                # Construye rutas anteriores de forma progresiva
+                ruta = os.sep.join(ruta_partes)
+            
+            listas_rutas_anteriores.append(ruta)
+
+            
+        listaRutas: list = []
+        # Agrega cada ruta previa construida a la lista
+        for ruta in listas_rutas_anteriores:
+            listaRutas.append(ruta)
+        
+        return listaRutas
 if __name__ == "__main__":
     explorador = ExploradorArchivos()
     explorador.ventanaPrincipal()
