@@ -10,33 +10,32 @@ class ExploradorArchivos(ttk.Frame):
         self.window.title("Explorador de Archivos")
         self.window.config(background="white")
         self.sistema = platform.system()
-        self.lista = Listbox()
-    
+        self.ruta_principal = os.getcwd()
+        self.ventanaPrincipal()
 
     def ventanaPrincipal(self):
-        label_file_explorer = Label(self.window, 
-                                    text="File Explorer using Tkinter",
-                                    width=100, height=4, 
-                                    fg="blue")
+        self.browseFiles()
         
-        button_explore = Button(self.window, 
-                                text="Browse Files",
-                                command=self.browseFiles)
+        self.indice_pestana_seleccionada = 0
+        self.notebook.bind("<Double-Button-1>", self.obtener_pestana)
         
-        button_exit = Button(self.window, 
-                             text="Exit",
-                             command=self.window.quit)
-        
-        label_file_explorer.grid(column=1, row=1)
-        button_explore.grid(column=1, row=2)
-        button_exit.grid(column=1, row=3)
-        
-        self.lista.bind("<Double-Button-1>", lambda event: self.on_archivo_seleccionado(event))
-
-
         self.window.mainloop()
-        
-    # Arreglar la seleccion    
+
+
+    def obtener_pestana(self, event):
+        x, y = event.x, event.y
+        try:
+            indice = self.notebook.index(f"@{x},{y}")
+            self.indice_pestana_seleccionada = indice
+            print(f"Pestaña seleccionada: {indice}")
+            
+            # Ahora puedes hacer algo con self.listas[indice]
+            self.listas[indice].bind("<Double-Button-1>", self.on_archivo_seleccionado)
+            
+        except Exception as e:
+            print("No se seleccionó una pestaña válida:", e)
+
+    # Arreglar la seleccion
     def abrir_archivo(self, rutaArchivo: str):
         print("Abriendo")
         # recibe una ruta y dependiendo del tipo de sistema en el que se ejecuta hara una u otra ejecucion
@@ -49,56 +48,54 @@ class ExploradorArchivos(ttk.Frame):
         else:
             raise Exception(f"Sistema operativo no soportado: {self.sistema}")
         self.ruta_anterior: str = rutaArchivo.split(rutaArchivo.split('\\')[-1])[0].rstrip('\\')
-        print(self.ruta_anterior)
     
-    def on_archivo_seleccionado(self, event):
-        seleccion = self.lista.curselection()
-        print("Seleccion: ",seleccion)
-        if seleccion:
-            archivo = self.lista.get(seleccion[0])
+    def on_archivo_seleccionado(self, event, carpeta):
+        lista: str = self.listas[carpeta]
+        ruta: str = self.ruta_principal.split(carpeta)[0]
+        print(f"Ruta: {ruta}")
+        print("Lista: ",carpeta,"\n")
+        ruta1 = ruta + carpeta
+        print(f"Ruta1: {ruta1}")
 
-            # Usa la ruta asociada al listbox, no os.getcwd()
-            ruta_base = getattr(self.lista, 'ruta_base', os.getcwd())
-            ruta_archivo = os.path.join(ruta_base, archivo)
+        selected_indices = lista.curselection()
+        if selected_indices:
+            for i in selected_indices:
+                archivo = lista.get(i)                
+                try:
+                    ruta_archivo = os.path.join(ruta1, archivo)
+                except Exception as e:
+                    pass
+                self.abrir_archivo(ruta_archivo)
 
-            print(f"Archivo seleccionado: {ruta_archivo}")
-            self.abrir_archivo(ruta_archivo)
 
-        
     def browseFiles(self):
-        lista_rutas = self.obtener_rutas() 
+        lista_rutas = self.obtener_rutas()
         carpetas: list = str(lista_rutas[0]).split("\\")
         # crea la ventana emergente para la vista del notebook
-        ventana_carpetas = Toplevel(self.window)
-        ventana_carpetas.title("Archivos")
-        notebook = ttk.Notebook(ventana_carpetas)
+        self.notebook = ttk.Notebook(self.window)
         lista_rutas.reverse()
 
         # Recorremos cada carpeta de la ruta actual desglosada
+        self.listas = {}  # Diccionario para guardar los Listbox
         for i, carpeta in enumerate(carpetas):
-            # Creamos un nuevo frame (pestaña) para agregar al notebook
-            frame = Frame(notebook)
-            
-            # Agregamos un label que muestra qué carpeta representa esta pestaña
+            frame = Frame(self.notebook)
             label = Label(frame, text=f"Contenido de carpeta: {carpeta}")
             label.pack(padx=10, pady=10)
 
-            # Creamos un Listbox para mostrar los archivos
-            self.lista = Listbox(frame, width=50)
-            # Insertamos cada archivo dentro del Listbox
-            ruta = lista_rutas[i]
-            archivos_en_ruta = self.obtener_archivos(ruta)
+            lista = Listbox(frame, width=50)
+            archivos_en_ruta = self.obtener_archivos(lista_rutas[i])
             for archivos in archivos_en_ruta:
                 for archivo in archivos:
-                    self.lista.insert(END, archivo)
-            # Empaquetamos el Listbox en el frame
-            self.lista.pack(padx=10, pady=10)
+                    lista.insert(END, archivo)
+            lista.pack(padx=10, pady=10)
+            lista.bind("<Double-Button-1>", lambda event, c=carpeta: self.on_archivo_seleccionado(event, c))
+            # Guardar el Listbox en el diccionario usando la carpeta como clave
+            self.listas[carpeta] = lista
 
-            # Agregamos el frame al notebook como una nueva pestaña con el nombre de la carpeta
-            notebook.add(frame, text=carpeta)
+            self.notebook.add(frame, text=carpeta)
 
         # Finalmente, empacamos el notebook para que se muestre en la ventana
-        notebook.pack(fill='both', expand=True)
+        self.notebook.pack(fill='both', expand=True)
 
 
             
@@ -152,4 +149,3 @@ class ExploradorArchivos(ttk.Frame):
         return listaRutas
 if __name__ == "__main__":
     explorador = ExploradorArchivos()
-    explorador.ventanaPrincipal()
