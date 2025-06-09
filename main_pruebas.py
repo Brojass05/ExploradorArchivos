@@ -10,22 +10,22 @@ class ExploradorArchivos(ttk.Frame):
         self.window.title("Explorador de Archivos")
         self.window.config(background="white")
         self.sistema = platform.system()
-        self.ruta_principal = os.getcwd()
         self.ventanaPrincipal()
 
     def ventanaPrincipal(self):
         self.browseFiles()
         
         self.indice_pestana_seleccionada = 0
-        self.notebook.bind("<<NotebookTabChanged>>", self.obtener_pestana)
+        self.notebook.bind("<Double-Button-1>", self.obtener_pestana)
         
         self.window.mainloop()
 
 
     def obtener_pestana(self, event):
+        x, y = event.x, event.y
         try:
-            notebook = event.widget
-            indice = notebook.index(notebook.select())
+            indice = self.notebook.index(f"@{x},{y}")
+            self.indice_pestana_seleccionada = indice
             print(f"Pestaña seleccionada: {indice}")
             
             # Ahora puedes hacer algo con self.listas[indice]
@@ -49,23 +49,14 @@ class ExploradorArchivos(ttk.Frame):
         self.ruta_anterior: str = rutaArchivo.split(rutaArchivo.split('\\')[-1])[0].rstrip('\\')
     
     def on_archivo_seleccionado(self, event, carpeta):
-        lista: str = self.listas[carpeta]
-        ruta: str = self.ruta_principal.split(carpeta)[0]
-        print(f"Ruta: {ruta}")
-        print("Lista: ",carpeta,"\n")
-        ruta1 = ruta + carpeta
-        print(f"Ruta1: {ruta1}")
-
+        lista = self.listas[carpeta]
         selected_indices = lista.curselection()
         if selected_indices:
             for i in selected_indices:
-                archivo = lista.get(i)                
-                try:
-                    ruta_archivo = os.path.join(ruta1, archivo)
-                except Exception as e:
-                    pass
-                self.abrir_archivo(ruta_archivo)
+                archivo = lista.get(i)
 
+                ruta_archivo = os.path.join(self.listas[self.indice_pestana_seleccionada], archivo)
+                self.abrir_archivo(ruta_archivo)
 
     def browseFiles(self):
         lista_rutas = self.obtener_rutas()
