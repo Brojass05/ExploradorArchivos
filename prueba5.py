@@ -27,6 +27,7 @@ class FileExplorer(QMainWindow):
         # Modelo del sistema de archivos
         self.model = QFileSystemModel()
         self.model.setRootPath('')
+        
 
         
         # Lista para guardar archivos
@@ -66,63 +67,73 @@ class FileExplorer(QMainWindow):
         self.setCentralWidget(container)
 
     def on_tree_right_click(self, position):
-        index = self.tree.indexAt(position)
-        if not index.isValid():
-            return
-        file: str = index.data()
-        inicio = file.index("(")
-        final = file.index(")")
-        Letra = file[inicio + 1 : final]
+        try:
+            index = self.tree.indexAt(position)
+            if not index.isValid():
+                return
+            file: str = index.data()
+            inicio = file.index("(")
+            final = file.index(")")
+            Letra = file[inicio + 1 : final]
 
-        # Menu al hacer Click Derecho
-        menu = QMenu()
-        
-        # Opciones
-        menu.addAction("Renombrar")
-        menu.addAction("Formatear")
-        menu.addAction("Crear particion")
-        
-        action = menu.exec_(self.tree.viewport().mapToGlobal(position))
-        if action:
-            accion = action.text()
-            print(f"Acción seleccionada: {accion}")
-            match accion:
-                case "Renombrar":
-                    if Letra != "C:":
-                        text, ok = QInputDialog.getText(self, f'Renombrar disco{Letra}', 'Nombre: ')
-                        if ok:
-                            nuevo_nombre = text
-                            subprocess.run(["label", Letra, nuevo_nombre], shell=True)
-                    else:
-                        QMessageBox.warning(self,"Error","El disco C: no se puede renombrar")
-                    
-                case "Formatear":
-                    if Letra != "C:":
-                        etiqueta, sistema_archivos = obtener_valores_formateo()
-                        if etiqueta is not None and sistema_archivos is not None:
-                            reply = QMessageBox.question(None, 'Desea continuar', f'Desea formatear el disco: {Letra}',QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            # Menu al hacer Click Derecho
+            menu = QMenu()
+            
+            # Opciones
+            menu.addAction("Renombrar")
+            menu.addAction("Formatear")
+            menu.addAction("Crear particion")
+            
+            action = menu.exec_(self.tree.viewport().mapToGlobal(position))
+            if action:
+                accion = action.text()
+                print(f"Acción seleccionada: {accion}")
+                match accion:
+                    case "Renombrar":
+                        if Letra != "C:":
+                            text, ok = QInputDialog.getText(self, f'Renombrar disco{Letra}', 'Nombre: ')
+                            if ok:
+                                nuevo_nombre = text
+                                subprocess.run(["label", Letra, nuevo_nombre], shell=True)
+                        else:
+                            QMessageBox.warning(self,"Error","El disco C: no se puede renombrar")
+                        
+                    case "Formatear":
+                        if Letra != "C:":
+                            etiqueta, sistema_archivos, seleccion = obtener_valores_formateo()
+                            print(seleccion)
+                            if seleccion == True:
+                                reply = QMessageBox.question(None, 'Desea continuar', f'Desea formatear el disco: {Letra}',QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                                if reply == QMessageBox.Yes:
+                                    self.formatear_disco(Letra, sistema_archivos, etiqueta)
+                        else:
+                            QMessageBox.warning(self,"Error","El disco C: no se puede formatear")
+                                                    
+                    case "Crear particion":                        
+                        # Obtiene el disco al que pertenece la particion siesque aplica
+                        info = self.obtener_disco_fisico(Letra)
+                        disco_num = info['Number']
+                        max_espacio = round(info["Size"] / (1024 ** 2), 2)
+                        print(max_espacio)
+                        tamano_particion, nueva_letra = obtener_valores_particiones(max_espacio)
+                        if tamano_particion is not None and nueva_letra is not None:
+                            reply = QMessageBox.question(None, 'Desea continuar', f'Desea particionar el disco: {Letra}',QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
                             if reply == QMessageBox.Yes:
-                                self.formatear_disco(Letra, sistema_archivos, etiqueta)
-                                    # Aquí puedes poner el código que se ejecuta si el usuario elige Sí
-                    else:
-                        QMessageBox.warning(self,"Error","El disco C: no se puede formatear")
-                                                
-                case "Crear particion":                        
-                    # Obtiene el disco al que pertenece la particion siesque aplica
-                    info = self.obtener_disco_fisico(Letra)
-                    disco_num = info['Number']
-                    max_espacio = round(info["LargestFreeExtent"] / (1024 ** 2), 2)
-                    print(max_espacio)
-                    tamano_particion, nueva_letra = obtener_valores_particiones(max_espacio)
-                    if tamano_particion is not None and nueva_letra is not None:
-                        reply = QMessageBox.question(None, 'Desea continuar', f'Desea particionar el disco: {Letra}',QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                        if reply == QMessageBox.Yes:
-                            self.crear_particion(disco_num,tamano_particion,nueva_letra)
+                                self.crear_particion(disco_num,tamano_particion,nueva_letra)
+                                
+        except Exception as e:
+            pass
+        
+    
        
+       
+    # Formatear Disco
     def formatear_disco(self, letra, sistema_archivo, nuevo_nombre):
         try:
             subprocess.run(["format", letra, f"/FS:{sistema_archivo}", "/Q", f"/V:{nuevo_nombre}", "/Y"], shell=True)
+            self.tree.update()
             QMessageBox.information(self, 'Proceso completado', 'El disco se ha formateado correctamente')
+            
         except Exception as e:
             QMessageBox.warning(self, 'Error de formateo', f'Hubo un error al formatear el disco \n Error: {e}')
         # AGREGAR ACTUALIZACION DE TREEVIEW
@@ -197,23 +208,29 @@ class FileExplorer(QMainWindow):
             print("Error al obtener información del disco:", resultado.stderr)
         return None
     
-    def crear_particion(self,disco_id, tamaño_MB, letra):
-        comando = f'''
-            powershell -Command "
-                $part = New-Partition -DiskNumber {disco_id} -Size {tamaño_MB}MB -AssignDriveLetter;
-                Format-Volume -DriveLetter $part.DriveLetter -FileSystem NTFS -NewFileSystemLabel 'NuevaParticion' -Confirm:$false;
-                Set-Partition -DriveLetter $part.DriveLetter -NewDriveLetter {letra}
-            "
-        '''
-
-        resultado = subprocess.run(comando, shell=True, capture_output=True, text=True)
+    def crear_particion(self, disco_id, tamaño_MB, letra):
+        # Asegura que la letra esté en mayúscula y solo sea un carácter
+        letra = str(letra).upper()[0]
+        print("Letra: ", letra, " Disco: ",disco_id," tamano: ",tamaño_MB)
+        comando = [
+            "powershell",
+            "-Command",
+            (
+                f"$part = New-Partition -DiskNumber {disco_id} -Size {tamaño_MB}MB -AssignDriveLetter;"
+                f"Format-Volume -DriveLetter $part.DriveLetter -FileSystem NTFS -NewFileSystemLabel 'NuevaParticion' -Confirm:$false;"
+                f"Set-Partition -DriveLetter $part.DriveLetter -NewDriveLetter {letra}"
+            )
+        ]
+        resultado = subprocess.run(comando, capture_output=True, text=True)
         if resultado.returncode == 0:
-            QMessageBox.information(self,"Particion creada","Partición creada con éxito.")
+            QMessageBox.information(self, "Partición creada", "Partición creada con éxito.")
+
         else:
-            QMessageBox.warning(self,"Error en particion",f"Error al crear partición: \n {resultado.stderr}")
+            QMessageBox.warning(self, "Error en partición", f"Error al crear partición:\n{resultado.stderr}")
     
 
 class InputFormateo(QDialog):
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Formateo Discos")
@@ -228,6 +245,7 @@ class InputFormateo(QDialog):
         self.botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.botones.accepted.connect(self.accept)
         self.botones.rejected.connect(self.reject)
+        self.botones.clicked.connect(self.on_boton_clickeado)
 
         # Layout
         layout = QVBoxLayout()
@@ -237,29 +255,41 @@ class InputFormateo(QDialog):
         layout.addWidget(self.botones)
 
         self.setLayout(layout)
-
+        
+        
+    def on_boton_clickeado(self, button):
+        role = self.botones.buttonRole(button)
+        if role == 0:
+            self.seleccion = True
+        elif role == 1:
+            self.seleccion = False
+  
     def obtener_datos(self):
         if self.line_edit.text() is not None and self.combo_box.currentText() is not None:
-            return self.line_edit.text(), self.combo_box.currentText()
+            seleccion = self.seleccion
+            return self.line_edit.text(), self.combo_box.currentText(), seleccion
         else:
             QMessageBox.warning(self,"Error formateo", "Rellene todos los campos para formatear")
-        return None, None
+        return None, None, seleccion
 
 def obtener_valores_formateo():
     dialogo = InputFormateo()
     if dialogo.exec_() == QDialog.Accepted:
-        texto, opcion = dialogo.obtener_datos()
+        texto, opcion, seleccion = dialogo.obtener_datos()
         return texto, opcion
-    return None, None
+    return None, None, seleccion
 
 class InputParticion(QDialog):
     def __init__(self, espacio_maximo ,parent=None):
         super().__init__(parent)
         self.setWindowTitle("Particionar Discos")
+        
+        self.label_max = QLabel(f"Espacio máximo disponible: {espacio_maximo} MB")
+        maxInt = int(espacio_maximo)
         # Widgets
         self.label_tamano = QLabel("Indique el tamaño de la partición (MB):")
         self.input_tamano = QLineEdit()
-        self.input_tamano.setValidator(QIntValidator(1, espacio_maximo))  # Solo números enteros positivos
+        self.input_tamano.setValidator(QIntValidator(1, maxInt))  # Solo números enteros positivos
 
         self.label_letra = QLabel("Indique la letra de la nueva partición:")
         self.input_letra = QLineEdit()
@@ -278,6 +308,7 @@ class InputParticion(QDialog):
         layout.addWidget(self.label_letra)
         layout.addWidget(self.input_letra)
         layout.addWidget(self.botones)
+        layout.addWidget(self.label_max)
         self.setLayout(layout)
 
     def obtener_datos(self):
