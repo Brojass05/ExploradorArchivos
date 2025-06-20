@@ -6,14 +6,11 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QModelIndex
 from PyQt5.QtGui import QIntValidator, QRegExpValidator
 from PyQt5.QtCore import QRegExp
-import win32api # Usado para interacciones específicas de Windows (no directamente en el código proporcionado, pero importado).
 import os # Módulo para interactuar con el sistema operativo, como rutas de archivos y directorios.
 import sys # Módulo para acceder a parámetros y funciones específicos del sistema, como la gestión de la aplicación.
 import platform # Módulo para acceder a datos de la plataforma subyacente, como el sistema operativo.
 import subprocess # Módulo para ejecutar nuevos procesos y gestionar sus entradas/salidas.
-import ctypes # Módulo para interactuar con tipos de datos de C y llamar a funciones en DLLs/bibliotecas compartidas (no directamente usado, pero importado).
 import json # Módulo para codificar y decodificar datos JSON.
-from ctypes import wintypes # Tipos de datos específicos de Windows para ctypes (no directamente usado, pero importado).
 
 # Clase principal de la aplicación, hereda de QMainWindow para crear una ventana de aplicación.
 class FileExplorer(QMainWindow):
@@ -36,7 +33,7 @@ class FileExplorer(QMainWindow):
         self.tree = QTreeView()
         self.tree.setModel(self.model) # Asocia el modelo de sistema de archivos al QTreeView.
         self.tree.setRootIndex(self.model.index('')) # Muestra el contenido del directorio raíz.
-        self.tree.setColumnWidth(0, 300) # Establece el ancho de la primera columna (nombre del archivo/directorio).
+        self.tree.setColumnWidth(0, 150) # Establece el ancho de la primera columna (nombre del archivo/directorio).
         self.tree.clicked.connect(self.on_tree_clicked) # Conecta el evento de clic en el árbol a un método.
         
         # Habilitar el menú contextual personalizado en el árbol (clic derecho).
@@ -148,7 +145,8 @@ class FileExplorer(QMainWindow):
             # /V:{nuevo_nombre}: establece la etiqueta de volumen.
             # /Y: suprime la solicitud de confirmación.
             subprocess.run(["format", letra, f"/FS:{sistema_archivo}", "/Q", f"/V:{nuevo_nombre}", "/Y"], shell=True)
-            self.tree.update() # Intenta actualizar la vista del árbol (aunque QFileSystemModel podría necesitar un refresh más explícito).
+            self.model.setRootPath('') 
+            self.tree.setRootIndex(self.model.index(''))
             QMessageBox.information(self, 'Proceso completado', 'El disco se ha formateado correctamente')
             
         except Exception as e:
@@ -162,7 +160,6 @@ class FileExplorer(QMainWindow):
         try:
             # Obtiene la ruta completa del archivo de la lista almacenada.
             rutaArchivo = self.lista_archivos[index.row()]
-            
             # Abre el archivo según el sistema operativo.
             if self.sistema == "Windows":
                 os.startfile(rutaArchivo) # Función específica de Windows para abrir archivos.
@@ -207,33 +204,32 @@ class FileExplorer(QMainWindow):
     
     # Método para obtener información del disco físico utilizando PowerShell.
     def obtener_disco_fisico(self,letra_unidad):
-        letra = letra_unidad.strip(":").upper() # Normaliza la letra de la unidad.
+        letra = letra_unidad.strip(":").upper()
         cmd = [
-            "powershell.exe", # Comando para ejecutar PowerShell.
-            "-Command", # Indica que el siguiente argumento es un comando.
+            "powershell.exe",
+            "-Command",
             f"""
-            $disk = Get-Partition -DriveLetter {letra} | Get-Disk; # Obtiene la partición por letra y luego el disco.
-            $info = [PSCustomObject]@{{" # Crea un objeto personalizado con la información relevante.
+            $disk = Get-Partition -DriveLetter {letra} | Get-Disk;
+            $info = [PSCustomObject]@{{
                 Number = $disk.Number;
                 FriendlyName = $disk.FriendlyName;
                 SerialNumber = $disk.SerialNumber;
                 Size = $disk.Size;
-                LargestFreeExtent = $disk.LargestFreeExtent # Espacio libre más grande en el disco.
+                LargestFreeExtent = $disk.LargestFreeExtent
             }};
-            $info | ConvertTo-Json # Convierte el objeto a JSON para facilitar el parseo en Python.
+            $info | ConvertTo-Json
             """
         ]
-        # Ejecuta el comando PowerShell y captura la salida.
         resultado = subprocess.run(cmd, capture_output=True, text=True)
-        if resultado.returncode == 0: # Si el comando se ejecutó sin errores.
+        if resultado.returncode == 0:
             try:
-                datos = json.loads(resultado.stdout) # Parsea la salida JSON a un diccionario Python.
-                return datos # Devuelve el diccionario con la información del disco.
+                datos = json.loads(resultado.stdout)
+                return datos  # Devuelve dict con 'Number', 'FriendlyName', etc.
             except json.JSONDecodeError:
                 print("No se pudo decodificar la salida JSON.")
         else:
             print("Error al obtener información del disco:", resultado.stderr)
-        return None # Retorna None si hubo un error.
+        return None
     
     # Método para crear una partición en un disco.
     def crear_particion(self, disco_id, tamaño_MB, letra):
