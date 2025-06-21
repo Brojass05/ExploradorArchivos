@@ -41,7 +41,7 @@ class FileExplorer(QMainWindow):
         self.tree.setModel(self.model) # Asocia el modelo de sistema de archivos al QTreeView.
         self.tree.setRootIndex(self.model.index('')) # Muestra el contenido del directorio raíz.
         self.tree.setColumnWidth(0, 150) # Establece el ancho de la primera columna (nombre del archivo/directorio).
-        self.tree.setMaximumHeight(500)
+        self.tree.setMaximumHeight(550)
         self.tree.clicked.connect(self.on_tree_clicked) # Conecta el evento de clic en el árbol a un método.
         
         # Habilitar el menú contextual personalizado en el árbol (clic derecho).
@@ -70,7 +70,7 @@ class FileExplorer(QMainWindow):
         self.setCentralWidget(container) # Establece el contenedor como el widget central de la ventana principal.
           
     # Método para manejar el clic derecho en el QTreeView (menú contextual).
-    def on_tree_right_click(self, position, caso=None):
+    def on_tree_right_click(self, position):
         try:
             # Obtiene el índice del elemento sobre el que se hizo clic.
             index = self.tree.indexAt(position)
@@ -98,6 +98,7 @@ class FileExplorer(QMainWindow):
                 #menu.addAction("Renombrar")
                 menu.addAction("Formatear")
                 menu.addAction("Crear Particion") # Nueva opción
+                menu.addAction("nombre")
             
             # Ejecuta el menú en la posición del clic derecho y obtiene la acción seleccionada.
             action = menu.exec_(self.tree.viewport().mapToGlobal(position))
@@ -124,7 +125,6 @@ class FileExplorer(QMainWindow):
                         if Letra != "C:": # No permite formatear la unidad C:.
                             # Abre un diálogo para obtener los parámetros de formateo (etiqueta y sistema de archivos).
                             etiqueta, sistema_archivos, seleccion = obtener_valores_formateo()
-                            print(seleccion) # Imprime la selección para depuración.
                             if seleccion == True: # Si el usuario confirmó la selección en el diálogo.
                                 # Pide confirmación antes de formatear.
                                 reply = QMessageBox.question(None, 'Desea continuar', f'Desea formatear el disco: {Letra}',QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
@@ -138,20 +138,17 @@ class FileExplorer(QMainWindow):
                                                     
                     case "Crear Particion":
                         # Nueva lógica para crear partición
-                            print("Particiones")
                             info = self.obtener_disco_fisico(Letra)
                             tamano = info["SizeRemaining"]
-                            print(tamano)
                             if not info or tamano is None:
                                 QMessageBox.warning(self, "Error", "No se pudo obtener el tamaño del disco.")
                                 return
 
                             disco_num = info['Number']
                             max_espacio_libre = round((tamano/1000**2),2) # Convierte el tamaño a MB.
+                            max_espacio_libre = max_espacio_libre - 1500 # Deja un margen de 1500 MB para evitar errores al crear la partición.
 
-                            print(max_espacio_libre)
-
-                            tamano_particion, nueva_letra,nombre_particion = obtener_valores_particiones(max_espacio_libre) # Pasar solo el espacio libre
+                            tamano_particion, nueva_letra, nombre_particion = obtener_valores_particiones(max_espacio_libre) # Pasar solo el espacio libre
 
                             if tamano_particion is not None and nueva_letra is not None:
                                 if tamano_particion > max_espacio_libre:
@@ -179,7 +176,7 @@ class FileExplorer(QMainWindow):
             res1 = subprocess.Popen(["format", letra, f"/FS:{sistema_archivo}", "/Q", f"/V:{nuevo_nombre}", "/Y"],stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,creationflags=self.CREATE_NO_WINDOW,
             text=True, shell=True)
-                    # Mostrar salidas
+            # Mostrar salidas
             output = ""
             for line in res1.stdout:
                 output += line
@@ -288,6 +285,8 @@ class FileExplorer(QMainWindow):
     
     def crear_particion(self, disco_id, letra, tamaño_MB, nueva_letra, nombre_etiqueta):                
         # Generar scripts
+        if nombre_etiqueta == "":
+            nombre_etiqueta = "Nueva Partición"
         shrink = f"select volume {letra}\nshrink desired={tamaño_MB}\nexit\n"
         create = (
             f"sel disk {disco_id}\n"
@@ -299,38 +298,44 @@ class FileExplorer(QMainWindow):
 
         with open("shrink.txt", "w") as f:
             f.write(shrink)
+            
         with open("create.txt", "w") as f:
             f.write(create)
 
         # Ejecutar scripts
-        res1 = subprocess.Popen(["diskpart", "/s", "shrink.txt"],creationflags=self.CREATE_NO_WINDOW,stdout=subprocess.PIPE,stderr=subprocess.STDOUT, text=True)
+        resShrink = subprocess.Popen(["diskpart", "/s", "shrink.txt"],creationflags=self.CREATE_NO_WINDOW,stdout=subprocess.PIPE,stderr=subprocess.STDOUT, text=True)
         output = ""
-        for line in res1.stdout:
+        for line in resShrink.stdout:
             output += line
             self.statusBar().showMessage(f"{line.strip()}")
             print(line.strip())
             QApplication.processEvents()  # Permite que la GUI se actualice
             time.sleep(0.05)  # Pequeña pausa para que se vea el cambio (opcional)
-        res1.wait()
-        if res1.returncode != 0:
+        resShrink.wait()
+        if resShrink.returncode != 0:
             QMessageBox.warning(self, "Error", "Error al reducir el volumen. Revisa los permisos o el espacio disponible.")
+            os.remove("shrink.txt")
             return False
         os.remove("shrink.txt")
-        res2 = subprocess.Popen(["diskpart", "/s", "create.txt"],creationflags=self.CREATE_NO_WINDOW,stdout=subprocess.PIPE,stderr=subprocess.STDOUT, text=True)
+        resShrink.stdout.close()  # Cierra el pipe de salida del proceso
+        time.sleep(1)
+        resParticion = subprocess.Popen(["diskpart", "/s", "create.txt"],creationflags=self.CREATE_NO_WINDOW,stdout=subprocess.PIPE,stderr=subprocess.STDOUT, text=True)
         output = ""
-        for line in res2.stdout:
+        for line in resParticion.stdout:
             output += line
             self.statusBar().showMessage(f"{line.strip()}")
             print(line.strip())
             QApplication.processEvents()  # Permite que la GUI se actualice
             time.sleep(0.05)  # Pequeña pausa para que se vea el cambio (opcional)
-        res2.wait()
-        if res2.returncode != 0:
+        resParticion.wait()
+        if resParticion.returncode != 0:
             QMessageBox.warning(self, "Error", "Error al crear la partición. Revisa los permisos o el espacio disponible.")
+            os.remove("create.txt")
             return False
         os.remove("create.txt")
+        resParticion.stdout.close()
         self.statusBar().showMessage("Partición creada con éxito", 3000)
-        return res2.returncode == 0   
+        return resParticion.returncode == 0   
         
     def obtener_informacion_particion(self, letra_unidad):
         """
@@ -409,12 +414,7 @@ class InputFormateo(QDialog):
     
     # Método para obtener los datos introducidos en el diálogo.
     def obtener_datos(self):
-        # Verifica que los campos no estén vacíos.
-        if self.line_edit.text() and self.combo_box.currentText():
-            return self.line_edit.text(), self.combo_box.currentText(), self.seleccion
-        else:
-            QMessageBox.warning(self,"Error formateo", "Rellene todos los campos para formatear")
-            return None, None, self.seleccion # Retorna None si hay campos vacíos.
+        return self.line_edit.text(), self.combo_box.currentText(), self.seleccion
 
 # Función auxiliar para mostrar el diálogo de formateo y obtener sus valores.
 def obtener_valores_formateo():
