@@ -1,0 +1,39 @@
+ExploradorComentado.py
+    Este módulo implementa una aplicación de explorador de archivos para Windows utilizando PyQt5.
+    Permite visualizar, crear, renombrar, borrar, formatear y particionar unidades y carpetas del sistema de archivos.
+    Incluye interfaces gráficas para la interacción del usuario y utiliza comandos de Windows y PowerShell para operaciones avanzadas de disco.
+    Clases:
+    --------
+    FileExplorer(QMainWindow):
+        Ventana principal del explorador de archivos. Permite:
+            - Visualizar el sistema de archivos en un árbol y una tabla.
+            - Crear, renombrar y borrar carpetas.
+            - Formatear y particionar discos (excepto la unidad C:).
+            - Abrir archivos con la aplicación predeterminada.
+            - Mostrar menús contextuales y diálogos personalizados para operaciones de disco.
+    InputFormateo(QDialog):
+        Diálogo para solicitar al usuario los parámetros necesarios para formatear una unidad:
+            - Selección de unidad (excepto C:).
+            - Nombre de la etiqueta de volumen.
+            - Tipo de sistema de archivos (NTFS/FAT32).
+    InputParticion(QDialog):
+        Diálogo para solicitar al usuario los parámetros necesarios para crear una partición:
+            - Tamaño de la partición (en MB, limitado por el espacio disponible).
+            - Letra de la nueva partición.
+            - Nombre de la partición.
+    Funciones:
+    ----------
+    obtener_unidades():
+        Devuelve una lista de letras de unidades disponibles en el sistema.
+    obtener_valores_formateo(combobox):
+        Muestra el diálogo de formateo y retorna los valores seleccionados por el usuario.
+    obtener_valores_particiones(espacio_maximo):
+        Muestra el diálogo de partición y retorna los valores seleccionados por el usuario.
+    es_admin():
+        Verifica si el script se está ejecutando con privilegios de administrador.
+    Notas:
+    ------
+    - El script requiere privilegios de administrador para ejecutar operaciones de disco como formateo y particionado.
+    - Utiliza comandos de Windows como 'format' y 'diskpart', así como PowerShell para obtener información de discos y particiones.
+    - El menú contextual y la barra de herramientas permiten acceso rápido a las funciones principales.
+    - El código está diseñado para ejecutarse en sistemas Windows.
