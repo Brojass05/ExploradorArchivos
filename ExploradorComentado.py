@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QModelIndex
 from PyQt5.QtGui import QIntValidator, QRegExpValidator, QIcon
 from PyQt5.QtCore import QRegExp
+import string
 import time # Módulo para funciones relacionadas con el tiempo.
 import ctypes # Módulo para interactuar con tipos de datos C y llamar a funciones en DLLs. Usado aquí para verificación de administrador.
 import win32api # Módulo para interactuar con la API de Windows. Usado para obtener letras de unidades.
@@ -72,7 +73,27 @@ class FileExplorer(QMainWindow):
         layout.addWidget(splitter) # Añade el splitter al layout.
         container.setLayout(layout) # Establece el layout para el contenedor.
         self.setCentralWidget(container) # Establece el contenedor como el widget central de la ventana principal.
-        
+
+    def resizeEvent(self, event):
+        nuevo = event.size()
+        header = self.tree.header()
+
+        # Ajustes del comportamiento de las columnas
+        header.setStretchLastSection(False)
+        from PyQt5.QtWidgets import QHeaderView
+        header.setSectionResizeMode(0, QHeaderView.Stretch)       # Columna 0 ocupa el espacio sobrante
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.Fixed)
+
+        # Definir anchos fijos para las demás (ajusta según conveniencia)
+        self.tree.setColumnWidth(1, 120)
+        self.tree.setColumnWidth(2, 150)
+        self.tree.setColumnWidth(3, 90)
+
+        perro, perro2 = nuevo.width(), nuevo.height()
+        print(f"PANEL {self.tree.columnWidth(0)=}, window {perro=}")
+        super().resizeEvent(event)
     # Método para manejar el clic derecho en el QTreeView (menú contextual).
     def on_tree_right_click(self, position):
         try:

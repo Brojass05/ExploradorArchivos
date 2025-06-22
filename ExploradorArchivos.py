@@ -2,11 +2,12 @@ from tokenize import Number
 from PyQt5.QtWidgets import (
     QMainWindow, QApplication, QFileSystemModel, QTreeView, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget, QSplitter, QMenu, QInputDialog, 
-    QMessageBox, QDialog, QLabel, QLineEdit, QComboBox, QDialogButtonBox, QToolBar, QAction
+    QMessageBox, QDialog, QLabel, QLineEdit, QComboBox, QDialogButtonBox, QHeaderView, QToolButton, QToolBar
 )
 from PyQt5.QtCore import Qt, QModelIndex
 from PyQt5.QtGui import QIntValidator, QRegExpValidator, QIcon
 from PyQt5.QtCore import QRegExp
+import string
 import time
 import ctypes
 import win32api
@@ -32,7 +33,7 @@ class FileExplorer(QMainWindow):
         # Modelo del sistema de archivos. QFileSystemModel proporciona un modelo de datos para el sistema de archivos local.
         self.model = QFileSystemModel()
         self.model.setRootPath('') # Establece la raíz del modelo al directorio principal del sistema.
-        
+        #self.model.removeRow(1, QModelIndex()) # Elimina la primera fila del modelo, que suele ser el directorio raíz (C:/ en Windows).
         # Lista para almacenar las rutas completas de los archivos mostrados en el panel derecho.
         self.lista_archivos = []
 
@@ -41,9 +42,35 @@ class FileExplorer(QMainWindow):
         self.tree.setModel(self.model) # Asocia el modelo de sistema de archivos al QTreeView.
         self.tree.setRootIndex(self.model.index('')) # Muestra el contenido del directorio raíz.
         self.tree.setColumnWidth(0, 150) # Establece el ancho de la primera columna (nombre del archivo/directorio).
-        self.tree.setMaximumHeight(550)
-        self.tree.clicked.connect(self.on_tree_clicked) # Conecta el evento de clic en el árbol a un método.
-        
+        self.tree.clicked.connect(self.click_en_arbol) # Conecta el evento de clic en el árbol a un método.
+        self.tree.expanded.connect(lambda index: self.tree.resizeColumnToContents(0))
+        self.tree.collapsed.connect(lambda index: self.tree.resizeColumnToContents(0))
+        self.tree.setMaximumHeight(400) # Establece una altura máxima para el árbol de directorios.
+        header = self.tree.header()
+        # Ajustes del comportamiento de las columnas
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.Stretch)       # Columna 0 ocupa el espacio sobrante
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.Fixed)
+
+        # Crear barra de herramientas
+        self.toolbar = QToolBar("Barra principal")
+        self.addToolBar(Qt.TopToolBarArea, self.toolbar)
+
+        # Crear botón de herramienta
+        self.boton_formateo = QToolButton()
+        self.boton_formateo.setText("Formatear Unidad")
+        self.boton_formateo.clicked.connect(self.formateo_boton)
+        # Agregar el botón a la barra de herramientas
+        self.toolbar.addWidget(self.boton_formateo)
+        # Crear botón de herramienta
+        self.boton_particion = QToolButton()
+        self.boton_particion.setText("Particionar Unidad")
+        self.boton_particion.clicked.connect(self.particion_boton)
+        # Agregar el botón a la barra de herramientas
+        self.toolbar.addWidget(self.boton_particion)
+
         # Habilitar el menú contextual personalizado en el árbol (clic derecho).
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.on_tree_right_click) # Conecta el evento de clic derecho a un método.
@@ -53,14 +80,13 @@ class FileExplorer(QMainWindow):
         self.right_panel.setColumnCount(2) # Define dos columnas: "Archivo" y "Tamaño (KB)".
         self.right_panel.setHorizontalHeaderLabels(["Archivo", "Tamaño (KB)"]) # Establece los encabezados de las columnas.
         self.right_panel.setColumnWidth(0, 300) # Establece el ancho de la primera columna.
-        self.right_panel.doubleClicked.connect(self.on_right_panel_item_click) # Conecta el doble clic en un elemento a un método.
+        self.right_panel.doubleClicked.connect(self.doble_click_archivo_panel_derecho) # Conecta el doble clic en un elemento a un método.
         
         # Splitter (QSplitter) para dividir la ventana y permitir redimensionar los paneles.
         splitter = QSplitter(Qt.Horizontal) # Splitter horizontal para dividir la ventana verticalmente.
         splitter.addWidget(self.tree) # Añade el árbol al splitter.
         splitter.addWidget(self.right_panel) # Añade el panel derecho al splitter.
         #splitter.setSizes([300, 700]) # Podría usarse para establecer los tamaños iniciales de los paneles.
-
         # Widget contenedor para el layout principal de la ventana.
         container = QWidget()
         container.setBaseSize(540,480)
@@ -68,7 +94,57 @@ class FileExplorer(QMainWindow):
         layout.addWidget(splitter) # Añade el splitter al layout.
         container.setLayout(layout) # Establece el layout para el contenedor.
         self.setCentralWidget(container) # Establece el contenedor como el widget central de la ventana principal.
-          
+    
+        
+    def formateo_boton(self):
+        """Muestra un diálogo para formatear discos."""
+        try:
+            disco,etiqueta, sistema_archivos, seleccion = obtener_valores_formateo(combobox=True)
+        except Exception as e:
+            return
+        if seleccion == True: # Si el usuario confirmó la selección en el diálogo.
+            # Pide confirmación antes de formatear.
+            reply = QMessageBox.question(None, 'Desea continuar', f'Desea formatear el disco: {disco}',QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes: # Si el usuario confirma.
+                self.formatear_disco(disco, sistema_archivos, etiqueta) # Llama al método para formatear.
+    
+    def particion_boton(self):
+        unidades = obtener_unidades()
+        unidades = [unidad for unidad in unidades if unidad != "C:"] # Excluye la unidad C: de la lista de unidades.
+        letra, ok = QInputDialog.getItem(
+            self,
+            "Seleccionar unidad",
+            "Elige la unidad que deseas particionar:",
+            unidades,
+            current=0,          # Opción seleccionada por defecto
+            editable=False      # Para que sea sólo selección (no texto libre)
+        )
+
+        if ok and letra:
+            info = self.obtener_disco_fisico(letra)
+            tamano = info["SizeRemaining"]
+            if not info or tamano is None:
+                QMessageBox.warning(self, "Error", "No se pudo obtener el tamaño del disco.")
+                return
+
+            disco_num = info['Number']
+            max_espacio_libre = round((tamano/1000**2),2) # Convierte el tamaño a MB.
+            max_espacio_libre = max_espacio_libre - 100 # Deja un margen de 100 MB para evitar errores al crear la partición.
+
+            tamano_particion, nueva_letra, nombre_particion = obtener_valores_particiones(max_espacio_libre) # Pasar solo el espacio libre
+
+            if tamano_particion is not None and nueva_letra is not None:
+                if tamano_particion > max_espacio_libre:
+                    QMessageBox.warning(self, "Error", f"El tamaño de la partición ({tamano_particion} MB) excede el espacio libre disponible ({max_espacio_libre} MB).")
+                    return
+
+                reply = QMessageBox.question(None, 'Confirmar Creación', f'¿Desea crear una partición de {tamano_particion} MB en el disco {letra} con la letra {nueva_letra}?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if reply == QMessageBox.Yes:
+                    self.crear_particion(disco_num, letra, tamano_particion, nueva_letra, nombre_particion)
+
+
+
+
     # Método para manejar el clic derecho en el QTreeView (menú contextual).
     def on_tree_right_click(self, position):
         try:
@@ -98,7 +174,6 @@ class FileExplorer(QMainWindow):
                 #menu.addAction("Renombrar")
                 menu.addAction("Formatear")
                 menu.addAction("Crear Particion") # Nueva opción
-                menu.addAction("nombre")
             
             # Ejecuta el menú en la posición del clic derecho y obtiene la acción seleccionada.
             action = menu.exec_(self.tree.viewport().mapToGlobal(position))
@@ -124,7 +199,7 @@ class FileExplorer(QMainWindow):
                     case "Formatear":
                         if Letra != "C:": # No permite formatear la unidad C:.
                             # Abre un diálogo para obtener los parámetros de formateo (etiqueta y sistema de archivos).
-                            etiqueta, sistema_archivos, seleccion = obtener_valores_formateo()
+                            etiqueta, sistema_archivos, seleccion = obtener_valores_formateo(combobox=False)
                             if seleccion == True: # Si el usuario confirmó la selección en el diálogo.
                                 # Pide confirmación antes de formatear.
                                 reply = QMessageBox.question(None, 'Desea continuar', f'Desea formatear el disco: {Letra}',QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
@@ -132,7 +207,8 @@ class FileExplorer(QMainWindow):
                                     self.formatear_disco(Letra, sistema_archivos, etiqueta) # Llama al método para formatear.
                                     self.model.setRootPath('')
                                     self.tree.setRootIndex(self.model.index(''))
-                                    self.on_tree_clicked(index)
+                                    self.click_en_arbol(index)
+                                    self.update() # Actualiza el modelo y el árbol.
                         else:
                             QMessageBox.warning(self,"Error","El disco C: no se puede formatear")
                                                     
@@ -145,8 +221,8 @@ class FileExplorer(QMainWindow):
                                 return
 
                             disco_num = info['Number']
-                            max_espacio_libre = round((tamano/1000**2),2) # Convierte el tamaño a MB.
-                            max_espacio_libre = max_espacio_libre - 1500 # Deja un margen de 1500 MB para evitar errores al crear la partición.
+                            max_espacio_libre = (tamano/1024**2) # Convierte el tamaño a MB.
+                            #max_espacio_libre = max_espacio_libre - 1500 # Deja un margen de 1500 MB para evitar errores al crear la partición.
 
                             tamano_particion, nueva_letra, nombre_particion = obtener_valores_particiones(max_espacio_libre) # Pasar solo el espacio libre
 
@@ -160,7 +236,8 @@ class FileExplorer(QMainWindow):
                                     self.crear_particion(disco_num, Letra, tamano_particion, nueva_letra, nombre_particion)
                                     self.model.setRootPath('')
                                     self.tree.setRootIndex(self.model.index(''))
-                                    self.on_tree_clicked(index)
+                                    self.click_en_arbol(index)
+                                    self.update() # Actualiza el modelo y el árbol.
 
         except Exception as e:
             QMessageBox.warning(self, "Error de operación", f"No se pudo realizar la operación seleccionada. Error: {e}")
@@ -178,9 +255,11 @@ class FileExplorer(QMainWindow):
             text=True, shell=True)
             # Mostrar salidas
             output = ""
+            progreso = 0
             for line in res1.stdout:
                 output += line
-                self.statusBar().showMessage(f"{line.strip()}")
+                progreso += 1
+                self.statusBar().showMessage(f"Linea: {progreso} - {line.strip()} ")
                 QApplication.processEvents()  # Permite que la GUI se actualice
                 time.sleep(0.05)  # Pequeña pausa para que se vea el cambio (opcional)
             res1.wait()
@@ -194,7 +273,7 @@ class FileExplorer(QMainWindow):
             # o incluso reconstruir el QFileSystemModel si los cambios no se reflejan automáticamente.
                 
     # Método para manejar el doble clic en un elemento del panel derecho (abrir archivo).
-    def on_right_panel_item_click(self, index: QModelIndex):
+    def doble_click_archivo_panel_derecho(self, index: QModelIndex):
         try:
             # Obtiene la ruta completa del archivo de la lista almacenada.
             rutaArchivo = self.lista_archivos[index.row()]
@@ -211,7 +290,7 @@ class FileExplorer(QMainWindow):
             QMessageBox.warning(self,"Error",f"Error al abrir el archivo: {e}")
     
     # Método para actualizar el panel derecho con los archivos de la carpeta seleccionada en el árbol.
-    def on_tree_clicked(self, index: QModelIndex):
+    def click_en_arbol(self, index: QModelIndex):
         """Actualiza el panel derecho con los archivos de la carpeta seleccionada."""
         ruta = self.model.filePath(index)
         self.statusBar().showMessage(ruta)
@@ -286,7 +365,7 @@ class FileExplorer(QMainWindow):
     def crear_particion(self, disco_id, letra, tamaño_MB, nueva_letra, nombre_etiqueta):                
         # Generar scripts
         if nombre_etiqueta == "":
-            nombre_etiqueta = "Nueva Partición"
+            nombre_etiqueta = "Nueva Particion"
         shrink = f"select volume {letra}\nshrink desired={tamaño_MB}\nexit\n"
         create = (
             f"sel disk {disco_id}\n"
@@ -325,7 +404,7 @@ class FileExplorer(QMainWindow):
         for line in resParticion.stdout:
             output += line
             progreso += 1
-            self.statusBar().showMessage(f"Progreso: {progreso} - {line.strip()} ")
+            self.statusBar().showMessage(f"Linea: {progreso} - {line.strip()} ")
             print(line.strip())
             QApplication.processEvents()  # Permite que la GUI se actualice
             time.sleep(0.05)  # Pequeña pausa para que se vea el cambio (opcional)
@@ -379,11 +458,17 @@ class FileExplorer(QMainWindow):
 # Clase para el diálogo de entrada de formateo de discos.
 class InputFormateo(QDialog):
     
-    def __init__(self, parent=None):
+    def __init__(self, combobox,parent=None):
         super().__init__(parent)
         self.setWindowTitle("Formateo Discos") # Título del diálogo.
         self.setGeometry(500,400,300,100)
-
+        unidades = obtener_unidades()
+        unidades = [unidad for unidad in unidades if unidad != "C:"] # Excluye la unidad C: de la lista de unidades.
+        self.combobox = combobox
+        
+        self.label_disco = QLabel("Seleccione el disco a formatear:")
+        self.combo_discos = QComboBox()
+        self.combo_discos.addItems(unidades)
         # Widgets del diálogo.
         self.label = QLabel("Escriba un nombre y elija una opción:")
         self.line_edit = QLineEdit() # Campo para el nombre de la etiqueta de volumen.
@@ -398,6 +483,10 @@ class InputFormateo(QDialog):
 
         # Layout del diálogo.
         layout = QVBoxLayout()
+        if combobox:
+            layout.addWidget(self.label_disco)
+            layout.addWidget(self.combo_discos)
+
         layout.addWidget(self.label)
         layout.addWidget(self.line_edit)
         layout.addWidget(self.combo_box)
@@ -416,15 +505,29 @@ class InputFormateo(QDialog):
     
     # Método para obtener los datos introducidos en el diálogo.
     def obtener_datos(self):
-        return self.line_edit.text(), self.combo_box.currentText(), self.seleccion
+        if self.combobox:
+            return self.combo_discos.currentText(),self.line_edit.text(), self.combo_box.currentText(), self.seleccion
+        else:
+            return self.line_edit.text(), self.combo_box.currentText(), self.seleccion
+
+def obtener_unidades():
+    letras = string.ascii_uppercase
+    unidades = [f"{letra}:" for letra in letras if os.path.exists(f"{letra}:\\")]
+    return unidades
+    
 
 # Función auxiliar para mostrar el diálogo de formateo y obtener sus valores.
-def obtener_valores_formateo():
-    dialogo = InputFormateo() # Crea una instancia del diálogo.
+def obtener_valores_formateo(combobox):
+    dialogo = InputFormateo(combobox) # Crea una instancia del diálogo.
     if dialogo.exec_() == QDialog.Accepted: # Si el usuario hace clic en OK.
-        texto, opcion, seleccion = dialogo.obtener_datos() # Obtiene los datos del diálogo.
-        return texto, opcion, seleccion # Retorna los valores.
+        if combobox:
+            disco, texto, opcion, seleccion = dialogo.obtener_datos() # Obtiene los datos del diálogo.
+            return disco,texto, opcion, seleccion # Retorna los valores.
+        else:
+            texto, opcion, seleccion = dialogo.obtener_datos() # Obtiene los datos del diálogo.
+            return texto, opcion, seleccion # Retorna los valores.
     return None, None, False # Retorna None si se canceló.
+
 
 # Clase para el diálogo de entrada para la creación de particiones.
 class InputParticion(QDialog):
