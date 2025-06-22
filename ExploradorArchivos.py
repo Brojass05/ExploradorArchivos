@@ -121,26 +121,29 @@ class FileExplorer(QMainWindow):
         )
 
         if ok and letra:
-            info = self.obtener_disco_fisico(letra)
-            tamano = info["SizeRemaining"]
-            if not info or tamano is None:
-                QMessageBox.warning(self, "Error", "No se pudo obtener el tamaño del disco.")
+            self.auxiliar_particion(letra) # Llama al método auxiliar para manejar la partición de la unidad seleccionada.        
+            
+    def auxiliar_particion(self, letra):
+        info = self.obtener_disco_fisico(letra)
+        tamano = info["SizeRemaining"]
+        if not info or tamano is None:
+            QMessageBox.warning(self, "Error", "No se pudo obtener el tamaño del disco.")
+            return
+
+        disco_num = info['Number']
+        max_espacio_libre = round((tamano/1024**2),0) # Convierte el tamaño a GB.
+
+
+        tamano_particion, nueva_letra, nombre_particion = obtener_valores_particiones(max_espacio_libre) # Pasar solo el espacio libre
+
+        if tamano_particion is not None and nueva_letra is not None:
+            if tamano_particion > max_espacio_libre:
+                QMessageBox.warning(self, "Error", f"El tamaño de la partición ({tamano_particion} MB) excede el espacio libre disponible ({max_espacio_libre} MB).")
                 return
 
-            disco_num = info['Number']
-            max_espacio_libre = round((tamano/1000**2),2) # Convierte el tamaño a MB.
-            max_espacio_libre = max_espacio_libre - 100 # Deja un margen de 100 MB para evitar errores al crear la partición.
-
-            tamano_particion, nueva_letra, nombre_particion = obtener_valores_particiones(max_espacio_libre) # Pasar solo el espacio libre
-
-            if tamano_particion is not None and nueva_letra is not None:
-                if tamano_particion > max_espacio_libre:
-                    QMessageBox.warning(self, "Error", f"El tamaño de la partición ({tamano_particion} MB) excede el espacio libre disponible ({max_espacio_libre} MB).")
-                    return
-
-                reply = QMessageBox.question(None, 'Confirmar Creación', f'¿Desea crear una partición de {tamano_particion} MB en el disco {letra} con la letra {nueva_letra}?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                if reply == QMessageBox.Yes:
-                    self.crear_particion(disco_num, letra, tamano_particion, nueva_letra, nombre_particion)
+            reply = QMessageBox.question(None, 'Confirmar Creación', f'¿Desea crear una partición de {tamano_particion} MB en el disco {letra} con la letra {nueva_letra}?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.crear_particion(disco_num, letra, tamano_particion, nueva_letra, nombre_particion)
 
 
 
@@ -214,30 +217,7 @@ class FileExplorer(QMainWindow):
                                                     
                     case "Crear Particion":
                         # Nueva lógica para crear partición
-                            info = self.obtener_disco_fisico(Letra)
-                            tamano = info["SizeRemaining"]
-                            if not info or tamano is None:
-                                QMessageBox.warning(self, "Error", "No se pudo obtener el tamaño del disco.")
-                                return
-
-                            disco_num = info['Number']
-                            max_espacio_libre = round((tamano/1024**2),2) # Convierte el tamaño a MB.
-                            #max_espacio_libre = max_espacio_libre - 1500 # Deja un margen de 1500 MB para evitar errores al crear la partición.
-
-                            tamano_particion, nueva_letra, nombre_particion = obtener_valores_particiones(max_espacio_libre) # Pasar solo el espacio libre
-
-                            if tamano_particion is not None and nueva_letra is not None:
-                                if tamano_particion > max_espacio_libre:
-                                    QMessageBox.warning(self, "Error", f"El tamaño de la partición ({tamano_particion} MB) excede el espacio libre disponible ({max_espacio_libre} MB).")
-                                    return
-
-                                reply = QMessageBox.question(None, 'Confirmar Creación', f'¿Desea crear una partición de {tamano_particion} MB en el disco {Letra} con la letra {nueva_letra}?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                                if reply == QMessageBox.Yes:
-                                    self.crear_particion(disco_num, Letra, tamano_particion, nueva_letra, nombre_particion)
-                                    self.model.setRootPath('')
-                                    self.tree.setRootIndex(self.model.index(''))
-                                    self.click_en_arbol(index)
-                                    self.update() # Actualiza el modelo y el árbol.
+                            self.auxiliar_particion(Letra) # Llama al método auxiliar para manejar la partición de la unidad seleccionada.   
 
         except Exception as e:
             QMessageBox.warning(self, "Error de operación", f"No se pudo realizar la operación seleccionada. Error: {e}")
@@ -605,11 +585,11 @@ def es_admin():
 # Bloque principal de ejecución cuando el script se ejecuta directamente.
 if __name__ == "__main__":
     # Si no es administrador, vuelve a ejecutar el mismo script con permisos elevados
-    if not es_admin():
+    '''if not es_admin():
         print("Elevando privilegios a administrador...")
         ctypes.windll.shell32.ShellExecuteW(
             None, "runas", sys.executable, " ".join(sys.argv), None, 1)
-        sys.exit()
+        sys.exit()'''
     app = QApplication(sys.argv) # Crea una instancia de QApplication (necesaria para cualquier aplicación PyQt).
     window = FileExplorer() # Crea una instancia de la ventana principal de la aplicación.
     window.show() # Muestra la ventana.
