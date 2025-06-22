@@ -221,7 +221,7 @@ class FileExplorer(QMainWindow):
                                 return
 
                             disco_num = info['Number']
-                            max_espacio_libre = (tamano/1024**2) # Convierte el tamaño a MB.
+                            max_espacio_libre = round((tamano/1024**2),2) # Convierte el tamaño a MB.
                             #max_espacio_libre = max_espacio_libre - 1500 # Deja un margen de 1500 MB para evitar errores al crear la partición.
 
                             tamano_particion, nueva_letra, nombre_particion = obtener_valores_particiones(max_espacio_libre) # Pasar solo el espacio libre
